@@ -1,0 +1,11 @@
+node_modules
+.next
+.env
+.env.local
+public/uploads/*
+!public/uploads/.gitkeep
+*.zip
+next-env.d.ts.bak
+storage/uploads/*
+!storage/uploads/.gitkeep
+storage/backups/*

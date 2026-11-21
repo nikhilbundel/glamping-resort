@@ -1,0 +1,545 @@
+// Eco-luxury glamping resort CMS — Prisma schema (MySQL)
+// Every image field (Json) stores: { url, alt, width, height, publicId, focalX?, focalY?, mobile?: { ...same } }
+
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "mysql"
+  url      = env("DATABASE_URL")
+}
+
+enum Role {
+  SUPER_ADMIN
+  EDITOR
+}
+
+enum EnquiryStatus {
+  NEW
+  CONTACTED
+  BOOKED
+  CLOSED
+}
+
+enum PostStatus {
+  DRAFT
+  PUBLISHED
+}
+
+// ───────────────────────────── Auth & audit ─────────────────────────────
+
+model User {
+  id           String    @id @default(cuid())
+  name         String
+  email        String    @unique
+  passwordHash String
+  role         Role      @default(EDITOR)
+  active       Boolean   @default(true)
+  lastLoginAt  DateTime?
+  /// Raised to sign this user out everywhere (password change, deactivation, "npm run admin:set").
+  sessionVersion Int     @default(0)
+  createdAt    DateTime  @default(now())
+  updatedAt    DateTime  @updatedAt
+}
+
+/// Failed admin sign-ins, counted per email and per IP address ("email:…" / "ip:…").
+/// After 3 failures in a row the key is locked for 1 hour.
+model LoginAttempt {
+  key         String    @id @db.VarChar(191)
+  failures    Int       @default(0)
+  lockedUntil DateTime?
+  updatedAt   DateTime  @updatedAt
+}
+
+model ActivityLog {
+  id        String   @id @default(cuid())
+  userId    String?
+  userName  String
+  action    String // create | update | delete | publish | login | restore | reorder ...
+  entity    String
+  entityId  String?
+  summary   String   @db.Text
+  details   Json? // exact changes: { where, changes: [{ path, from, to }], snapshot, order }
+  createdAt DateTime @default(now())
+
+  @@index([createdAt])
+  @@index([entity, entityId])
+}
+
+model Revision {
+  id         String   @id @default(cuid())
+  entityType String // section | post | page
+  entityId   String
+  data       Json
+  userName   String
+  createdAt  DateTime @default(now())
+
+  @@index([entityType, entityId, createdAt])
+}
+
+// ───────────────────────────── Site config ─────────────────────────────
+
+model Setting {
+  key       String   @id // general | contact | social | whatsapp | booking | analytics | announcement | cookie | footer | theme | seo | instagram | maintenance
+  value     Json
+  updatedAt DateTime @updatedAt
+}
+
+model Menu {
+  id        String   @id @default(cuid())
+  location  String   @unique // header | utility | footer | legal
+  name      String
+  items     Json // [{ id, label, href, newTab, children: [...] }]
+  updatedAt DateTime @updatedAt
+}
+
+model Redirect {
+  id        String   @id @default(cuid())
+  from      String   @unique
+  to        String   @db.VarChar(1000)
+  type      Int      @default(301)
+  active    Boolean  @default(true)
+  hits      Int      @default(0)
+  createdAt DateTime @default(now())
+}
+
+// ───────────────────────────── Pages & sections ─────────────────────────
+
+model Page {
+  id             String    @id @default(cuid())
+  slug           String    @unique // "" = home, "stays/domes", "about/our-story" ...
+  title          String
+  isSystem       Boolean   @default(false)
+  published      Boolean   @default(true)
+  seoTitle       String?
+  seoDescription String?   @db.Text
+  ogImage        Json?
+  canonical      String?   @db.VarChar(1000)
+  noindex        Boolean   @default(false)
+  sections       Section[]
+  createdAt      DateTime  @default(now())
+  updatedAt      DateTime  @updatedAt
+}
+
+model Section {
+  id        String   @id @default(cuid())
+  pageId    String
+  page      Page     @relation(fields: [pageId], references: [id], onDelete: Cascade)
+  type      String
+  label     String?
+  order     Int      @default(0)
+  isVisible Boolean  @default(true)
+  data      Json // published content
+  draftData Json? // auto-saved draft (rendered only in preview / draft mode)
+  updatedAt DateTime @updatedAt
+
+  @@index([pageId, order])
+}
+
+// ───────────────────────────── Media ─────────────────────────────
+
+model Media {
+  id        String   @id @default(cuid())
+  url       String   @db.VarChar(1000)
+  publicId  String?
+  filename  String
+  alt       String   @db.VarChar(500)
+  width     Int      @default(0)
+  height    Int      @default(0)
+  mime      String
+  size      Int      @default(0)
+  folder    String   @default("general")
+  focalX    Float    @default(50)
+  focalY    Float    @default(50)
+  createdAt DateTime @default(now())
+
+  @@index([folder])
+}
+
+// ───────────────────────────── Collections ─────────────────────────────
+
+model Stay {
+  id        String   @id @default(cuid())
+  name      String
+  slug      String   @unique
+  eyebrow   String?
+  summary   String?  @db.Text
+  image     Json?
+  pageSlug  String? // page that renders /stays/<slug>
+  order     Int      @default(0)
+  published Boolean  @default(true)
+  rooms     Room[]
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+}
+
+model Room {
+  id             String   @id @default(cuid())
+  stayId         String
+  stay           Stay     @relation(fields: [stayId], references: [id], onDelete: Cascade)
+  name           String
+  description    String?  @db.Text
+  images         Json? // ImageValue[]
+  size           String?
+  view           String?
+  capacity       String?
+  priceFrom      String?
+  priceOnRequest Boolean  @default(false)
+  features       Json? // [{ icon, label }]
+  bookUrl        String?  @db.VarChar(1000)
+  order          Int      @default(0)
+  published      Boolean  @default(true)
+  // ── Online booking ──
+  bookable        Boolean    @default(false) // guests can book & pay for this room on /book
+  units           Int        @default(1) // how many identical units exist (1 = one booking per night)
+  basePrice       Int? // ₹ per night (includes GST) when no date price is set
+  baseGuests      Int        @default(2) // guests included in the price
+  maxGuests       Int        @default(2) // maximum guests (adults + children over the free age)
+  maxAdults       Int? // optional separate limit for adults
+  maxChildren     Int? // optional limit for children (0 = adults only)
+  extraGuestPrice Int        @default(0) // ₹ per extra adult per night
+  extraChildPrice Int? // ₹ per extra child per night (null = same as an extra adult)
+  occupancyNote   String?    @db.VarChar(200) // shown to guests, e.g. "Perfect for couples — 2 guests only"
+  minNights       Int        @default(1)
+  rates           RoomRate[]
+  bookings        Booking[]
+  createdAt      DateTime @default(now())
+  updatedAt      DateTime @updatedAt
+}
+
+/// A price or closure for one room on one night (set in Admin → Rates & availability).
+model RoomRate {
+  id     String   @id @default(cuid())
+  roomId String
+  room   Room     @relation(fields: [roomId], references: [id], onDelete: Cascade)
+  date   DateTime @db.Date // the night that starts on this date
+  price  Int? // ₹ for this night (null = use the room's base price)
+  closed Boolean  @default(false) // not bookable this night
+
+  @@unique([roomId, date])
+}
+
+enum BookingStatus {
+  PENDING // waiting for payment (dates held for a few minutes)
+  CONFIRMED
+  CANCELLED
+  EXPIRED // payment never completed
+  FAILED
+}
+
+model Booking {
+  id                String        @id @default(cuid())
+  code              String        @unique // e.g. GHC-7K3P9 — shown to the guest
+  roomId            String
+  room              Room          @relation(fields: [roomId], references: [id], onDelete: Restrict)
+  checkIn           DateTime      @db.Date
+  checkOut          DateTime      @db.Date
+  nights            Int
+  adults            Int
+  children          Int           @default(0)
+  childAges         Json? // number[]
+  name              String
+  email             String
+  phone             String
+  notes             String?       @db.Text
+  amount            Int // total in ₹ (includes GST)
+  breakdown         Json? // per-night prices + extras
+  status            BookingStatus @default(PENDING)
+  source            String        @default("website") // website | admin
+  holdUntil         DateTime? // PENDING bookings block the dates until this time
+  razorpayOrderId   String?       @unique
+  razorpayPaymentId String?
+  paidAt            DateTime?
+  adminNote         String?       @db.Text
+  createdAt         DateTime      @default(now())
+  updatedAt         DateTime      @updatedAt
+
+  @@index([roomId, checkIn, checkOut])
+  @@index([status, createdAt])
+}
+
+model Amenity {
+  id        String   @id @default(cuid())
+  title     String
+  text      String?  @db.Text
+  icon      String   @default("Sparkles")
+  group     String   @default("general") // general | domes | mudhouse | long-stays | spa ...
+  order     Int      @default(0)
+  published Boolean  @default(true)
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+}
+
+model Activity {
+  id             String   @id @default(cuid())
+  title          String
+  slug           String   @unique
+  excerpt        String?  @db.Text
+  content        String?  @db.LongText
+  image          Json?
+  video          String?  @db.VarChar(1000) // muted looping clip played on cards + detail page
+  gallery        Json?
+  tags           Json? // string[]
+  featured       Boolean  @default(false)
+  seasonal       Boolean  @default(false)
+  duration       String?
+  price          String?
+  seoTitle       String?
+  seoDescription String?  @db.Text
+  order          Int      @default(0)
+  published      Boolean  @default(true)
+  createdAt      DateTime @default(now())
+  updatedAt      DateTime @updatedAt
+}
+
+model SpecialArrangement {
+  id        String   @id @default(cuid())
+  title     String
+  slug      String   @unique
+  excerpt   String?  @db.Text
+  content   String?  @db.LongText
+  image     Json?
+  price     String?
+  order     Int      @default(0)
+  published Boolean  @default(true)
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+}
+
+model SpaTreatment {
+  id          String   @id @default(cuid())
+  name        String
+  category    String?
+  duration    String?
+  price       String?
+  description String?  @db.Text
+  order       Int      @default(0)
+  published   Boolean  @default(true)
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+}
+
+model MenuCategory {
+  id          String     @id @default(cuid())
+  name        String
+  description String?    @db.Text
+  order       Int        @default(0)
+  published   Boolean    @default(true)
+  items       MenuItem[]
+  createdAt   DateTime   @default(now())
+  updatedAt   DateTime   @updatedAt
+}
+
+model MenuItem {
+  id          String       @id @default(cuid())
+  categoryId  String
+  category    MenuCategory @relation(fields: [categoryId], references: [id], onDelete: Cascade)
+  name        String
+  description String?      @db.Text
+  price       String?
+  veg         Boolean      @default(true)
+  vegan       Boolean      @default(false)
+  order       Int          @default(0)
+  published   Boolean      @default(true)
+  createdAt   DateTime     @default(now())
+  updatedAt   DateTime     @updatedAt
+}
+
+model CafeTiming {
+  id        String   @id @default(cuid())
+  meal      String
+  hours     String
+  lastOrder String?
+  order     Int      @default(0)
+  published Boolean  @default(true)
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+}
+
+model Testimonial {
+  id        String   @id @default(cuid())
+  name      String
+  location  String?
+  quote     String   @db.Text
+  rating    Int      @default(5)
+  avatar    Json?
+  source    String?
+  order     Int      @default(0)
+  published Boolean  @default(true)
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+}
+
+model MediaMention {
+  id        String   @id @default(cuid())
+  name      String
+  logo      Json?
+  url       String?  @db.VarChar(1000)
+  order     Int      @default(0)
+  published Boolean  @default(true)
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+}
+
+model Award {
+  id          String   @id @default(cuid())
+  title       String
+  issuer      String?
+  year        String?
+  description String?  @db.Text
+  image       Json?
+  url         String?  @db.VarChar(1000)
+  order       Int      @default(0)
+  published   Boolean  @default(true)
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+}
+
+model Stat {
+  id        String   @id @default(cuid())
+  value     Int
+  suffix    String?
+  label     String
+  group     String   @default("community")
+  order     Int      @default(0)
+  published Boolean  @default(true)
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+}
+
+model FaqCategory {
+  id        String   @id @default(cuid())
+  name      String
+  slug      String   @unique
+  order     Int      @default(0)
+  faqs      Faq[]
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+}
+
+model Faq {
+  id         String      @id @default(cuid())
+  categoryId String
+  category   FaqCategory @relation(fields: [categoryId], references: [id], onDelete: Cascade)
+  question   String      @db.VarChar(500)
+  answer     String      @db.LongText
+  pages      Json? // string[] of page slugs this FAQ is assigned to
+  order      Int         @default(0)
+  published  Boolean     @default(true)
+  createdAt  DateTime    @default(now())
+  updatedAt  DateTime    @updatedAt
+}
+
+model TeamMember {
+  id        String   @id @default(cuid())
+  name      String
+  role      String?
+  bio       String?  @db.Text
+  photo     Json?
+  order     Int      @default(0)
+  published Boolean  @default(true)
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+}
+
+model InstagramPost {
+  id        String   @id @default(cuid())
+  image     Json
+  link      String?  @db.VarChar(1000)
+  caption   String?  @db.Text
+  order     Int      @default(0)
+  published Boolean  @default(true)
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+}
+
+// ───────────────────────────── Blog ─────────────────────────────
+
+model Author {
+  id        String   @id @default(cuid())
+  name      String
+  slug      String   @unique
+  bio       String?  @db.Text
+  avatar    Json?
+  posts     Post[]
+  order     Int      @default(0)
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+}
+
+model BlogCategory {
+  id          String   @id @default(cuid())
+  name        String
+  slug        String   @unique
+  description String?  @db.Text
+  posts       Post[]
+  order       Int      @default(0)
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+}
+
+model Tag {
+  id        String   @id @default(cuid())
+  name      String
+  slug      String   @unique
+  posts     Post[]
+  order     Int      @default(0)
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+}
+
+model Post {
+  id             String        @id @default(cuid())
+  title          String
+  slug           String        @unique
+  excerpt        String?       @db.Text
+  content        String        @db.LongText
+  coverImage     Json?
+  authorId       String?
+  author         Author?       @relation(fields: [authorId], references: [id], onDelete: SetNull)
+  categoryId     String?
+  category       BlogCategory? @relation(fields: [categoryId], references: [id], onDelete: SetNull)
+  tags           Tag[]
+  status         PostStatus    @default(DRAFT)
+  publishedAt    DateTime?
+  readingTime    Int           @default(1)
+  seoTitle       String?
+  seoDescription String?       @db.Text
+  ogImage        Json?
+  canonical      String?       @db.VarChar(1000)
+  noindex        Boolean       @default(false)
+  order          Int           @default(0)
+  createdAt      DateTime      @default(now())
+  updatedAt      DateTime      @updatedAt
+
+  @@index([status, publishedAt])
+}
+
+// ───────────────────────────── Leads ─────────────────────────────
+
+model Enquiry {
+  id        String        @id @default(cuid())
+  name      String
+  email     String
+  phone     String?
+  checkIn   DateTime?
+  checkOut  DateTime?
+  guests    Int?
+  stayType  String?
+  message   String?       @db.Text
+  status    EnquiryStatus @default(NEW)
+  notes     String?       @db.Text
+  sourceUrl String?       @db.VarChar(1000)
+  createdAt DateTime      @default(now())
+  updatedAt DateTime      @updatedAt
+
+  @@index([status, createdAt])
+}
+
+model Subscriber {
+  id        String   @id @default(cuid())
+  email     String   @unique
+  source    String?
+  createdAt DateTime @default(now())
+}

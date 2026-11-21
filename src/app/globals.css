@@ -1,0 +1,109 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+/* Defaults; the live theme is injected by the site layout from Admin → Theme */
+:root {
+  --primary: #2f4a3a; --primary-rgb: 47 74 58;
+  --primary-dark: #1e3127; --primary-dark-rgb: 30 49 39;
+  --accent: #b8834f; --accent-rgb: 184 131 79;
+  --bg: #faf6ef; --bg-rgb: 250 246 239;
+  --surface: #ffffff; --surface-rgb: 255 255 255;
+  --text: #2a2a2a; --text-rgb: 42 42 42;
+  --muted: #6b6b6b; --muted-rgb: 107 107 107;
+  --border: #e7dfd2; --border-rgb: 231 223 210;
+  --font-heading: 'Cormorant Garamond';
+  --font-body: 'Jost';
+  --radius-btn: 999px;
+  --radius-card: 12px;
+  --section-y: 5rem;
+  --section-y-md: 7rem;
+}
+
+@layer base {
+  html { scroll-behavior: smooth; -webkit-text-size-adjust: 100%; }
+  body { @apply bg-bg font-body text-body text-ink antialiased; overflow-x: hidden; }
+  h1, h2, h3, h4 { @apply font-heading; }
+  ::selection { background: rgb(var(--accent-rgb) / 0.25); }
+  :focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
+}
+
+@layer components {
+  .section-y { padding-top: var(--section-y); padding-bottom: var(--section-y); }
+  @media (min-width: 768px) { .section-y { padding-top: var(--section-y-md); padding-bottom: var(--section-y-md); } }
+  .eyebrow { @apply font-body font-medium uppercase; font-size: calc(12px * var(--ts-eyebrow, 1) * var(--s-eyebrow, 1)); line-height: 1.3; letter-spacing: 0.2em; }
+  @media (min-width: 768px) { .eyebrow { font-size: calc(13px * var(--ts-eyebrow, 1) * var(--s-eyebrow, 1)); } }
+  /* Paragraph / list text follows the "Paragraph text size" controls (Theme + each section). */
+  .section-y { font-size: calc(1rem * var(--ts-body, 1) * var(--s-body, 1)); }
+  .section-y .prose { font-size: 1em; }
+  .card { @apply overflow-hidden rounded-card bg-surface shadow-soft; }
+  .skip-link { @apply sr-only focus:not-sr-only focus:fixed focus:left-4 focus:top-4 focus:z-[100] focus:rounded-btn focus:bg-accent focus:px-5 focus:py-3 focus:text-white; }
+  .field { @apply min-h-[44px] w-full rounded-lg border border-line bg-surface px-4 py-2.5 text-base text-ink outline-none transition focus:border-accent focus:ring-2 focus:ring-accent/20; }
+  .field-label { @apply mb-1.5 block text-sm font-medium text-ink/80; }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  *, *::before, *::after { animation-duration: 0.01ms !important; animation-iteration-count: 1 !important; transition-duration: 0.01ms !important; scroll-behavior: auto !important; }
+}
+
+/* Swiper base tweaks — never let a slider stretch its grid/flex parent (caused giant images on mobile) */
+.swiper { width: 100%; max-width: 100%; min-width: 0; }
+.swiper-pagination-bullet { background: currentColor; }
+.swiper-pagination-bullet-active { background: var(--accent) !important; }
+
+/* Admin panel uses the system sans font everywhere */
+.admin-ui h1, .admin-ui h2, .admin-ui h3, .admin-ui h4 { font-family: inherit; }
+
+/* ── Stays / Experiences switch: sections tied to a hero link (set on <html data-hero-tab> by HeroSlider) ── */
+html:not([data-hero-tab='1']) [data-tab-only='1'] { display: none; }
+html[data-hero-tab='1'] [data-tab-only='0'] { display: none; }
+[data-tab-only] { animation: hx-fade 0.6s ease-out both; }
+
+/* ── Home hero entrance animations (used by HeroSlider) ───────────────── */
+@keyframes hx-fade { from { opacity: 0; } }
+@keyframes hx-fade-up { from { opacity: 0; transform: translate3d(0, var(--hx-dist, 40px), 0); } }
+@keyframes hx-fade-down { from { opacity: 0; transform: translate3d(0, calc(var(--hx-dist, 40px) * -1), 0); } }
+@keyframes hx-fade-left { from { opacity: 0; transform: translate3d(calc(var(--hx-dist, 40px) * 1.5), 0, 0); } }
+@keyframes hx-fade-right { from { opacity: 0; transform: translate3d(calc(var(--hx-dist, 40px) * -1.5), 0, 0); } }
+@keyframes hx-zoom-in { from { opacity: 0; transform: scale(0.6); } }
+@keyframes hx-zoom-out { from { opacity: 0; transform: scale(1.4); } }
+@keyframes hx-blur-in { from { opacity: 0; filter: blur(16px); } }
+@keyframes hx-reveal-up { from { transform: translate3d(0, 105%, 0); } }
+@keyframes hx-reveal-down { from { transform: translate3d(0, -105%, 0); } }
+@keyframes hx-flip-up { from { opacity: 0; transform: perspective(900px) rotateX(85deg); } }
+@keyframes hx-rotate-in { from { opacity: 0; transform: rotate(-12deg) scale(0.9); } }
+@keyframes hx-tracking-in { from { opacity: 0; transform: scaleX(1.35); filter: blur(6px); } }
+@keyframes hx-bounce-in { 0% { opacity: 0; transform: scale(0.3); } 50% { opacity: 1; transform: scale(1.08); } 70% { transform: scale(0.95); } 100% { transform: scale(1); } }
+@keyframes hx-drop-in { 0% { opacity: 0; transform: translateY(-120px); } 60% { opacity: 1; transform: translateY(12px); } 80% { transform: translateY(-6px); } 100% { transform: none; } }
+@keyframes hx-pop { 0% { opacity: 0; transform: scale(0); } 70% { opacity: 1; transform: scale(1.25); } 100% { transform: scale(1); } }
+@keyframes hx-type { from { opacity: 0; } to { opacity: 1; } }
+@keyframes hx-out { to { opacity: 0; transform: translate3d(0, -12px, 0); } }
+@keyframes hx-caret { 0%, 49% { opacity: 1; } 50%, 100% { opacity: 0; } }
+.hx-hidden { opacity: 0; }
+.hx-anim { overflow-wrap: normal; }
+.hx-out { animation: hx-out 0.45s ease-in both; }
+.hx-caret { display: inline-block; width: 0.06em; height: 0.9em; margin-left: 0.06em; vertical-align: -0.05em; background: currentColor; animation: hx-caret 1s step-end infinite; }
+.hx-grad span { color: transparent; }
+.hx-grad .hx-piece { background-image: var(--hx-grad); -webkit-background-clip: text; background-clip: text; }
+@media (prefers-reduced-motion: reduce) { .hx-piece, .hx-anim { animation: none !important; opacity: 1 !important; } }
+
+/* Split-section image slider dots: always visible on any photo */
+.ms-dot { display:inline-block; width:8px; height:8px; border-radius:999px; background:rgba(255,255,255,.65); box-shadow:0 0 0 1px rgba(0,0,0,.15),0 1px 3px rgba(0,0,0,.3); cursor:pointer; transition:all .3s; }
+.ms-dot-active { width:22px; background:#fff; }
+
+/* Slide widths before the slider script starts (or if it can't run). Swiper overrides these once it is ready,
+   so cards never show up as one giant full-width slide. */
+.swiper-wrapper:has(> .vr-slide) { display: flex; }
+.swiper-slide.vr-slide { flex-shrink: 0; width: calc((100% - 16px * 0.35) / 1.35); margin-right: 16px; }
+@media (min-width: 640px) { .swiper-slide.vr-slide { width: calc((100% - 16px * (var(--vr-per-sm, 2.4) - 1)) / var(--vr-per-sm, 2.4)); } }
+@media (min-width: 1024px) { .swiper-slide.vr-slide { width: calc((100% - 16px * (var(--vr-per, 4) - 1)) / var(--vr-per, 4)); } }
+.swiper-slide.cs-slide { flex-shrink: 0; width: calc((100% - 20px * 0.15) / 1.15); margin-right: 20px; }
+@media (min-width: 640px) { .swiper-slide.cs-slide { width: calc((100% - 20px * (var(--cs-per-sm, 2) - 1)) / var(--cs-per-sm, 2)); } }
+@media (min-width: 1024px) { .swiper-slide.cs-slide { width: calc((100% - 20px * (var(--cs-per, 3) - 1)) / var(--cs-per, 3)); } }
+
+/* On the booking page (phones), lift WhatsApp / back-to-top above the "Review & pay" bar */
+@media (max-width: 1023px) {
+  body:has([data-testid='mobile-pay-bar']) .floating-btn { bottom: 5.5rem; }
+  body:has([data-testid='mobile-pay-bar']) [aria-label='Cookie consent'] { bottom: 6.5rem; }
+  body:has([data-testid='mobile-pay-bar']) footer { padding-bottom: 5rem; }
+}
